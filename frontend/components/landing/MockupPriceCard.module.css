@@ -1,0 +1,120 @@
+.mockupCard {
+  background: white;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl);
+  box-shadow: 0 20px 48px -8px rgba(31, 107, 60, 0.12), 0 8px 16px -4px rgba(0,0,0,0.06);
+  overflow: hidden;
+  width: 100%;
+  max-width: 440px;
+}
+
+.mockupHeader {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 12px 16px;
+  background: #FAFAFA;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.mockupDot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+.mockupDot.red { background: #FF5F57; }
+.mockupDot.yellow { background: #FFBD2E; }
+.mockupDot.green { background: #28CA42; }
+
+.mockupTitle {
+  margin-left: 6px;
+  font-size: var(--text-xs);
+  font-weight: 600;
+  color: var(--color-text-muted);
+}
+
+.mockupBody {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.mockupItem {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  background: #FAFBFA;
+  border: 1px solid #EAF2EC;
+  border-radius: var(--radius-lg);
+  gap: var(--space-3);
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.mockupItem:hover {
+  transform: translateY(-2px);
+  background: white;
+  border-color: var(--color-primary-mid);
+  box-shadow: 0 4px 12px rgba(31, 107, 60, 0.05);
+}
+
+.mockupItemLeft {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.mockupCommodity {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.mockupMarket {
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+}
+
+.mockupItemRight {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.mockupPrice {
+  font-size: var(--text-sm);
+  font-weight: 700;
+  color: var(--color-text);
+}
+
+.mockupBadge {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+}
+
+.mockupBadge.sell {
+  background: var(--color-primary-bg);
+  color: var(--color-primary);
+}
+
+.mockupBadge.hold {
+  background: var(--color-warning-bg);
+  color: var(--color-warning);
+}
+
+.mockupFooter {
+  display: flex;
+  justify-content: space-between;
+  padding-top: 4px;
+}
+
+.mockupUpdated,
+.mockupSource {
+  font-size: 10px;
+  color: var(--color-text-muted);
+}
