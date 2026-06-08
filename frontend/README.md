@@ -1,34 +1,69 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Yawgriva Frontend App
 
-## Getting Started
+This is the client-side dashboard application for Yawgriva, built using **Next.js (App Router)**, **Tailwind CSS**, and **TypeScript**. It offers role-based dashboards tailored for farmers, distributors, and administrators.
 
-First, run the development server:
+## Folder Structure
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+```text
+├── app/                  # Next.js App Router folders
+│   ├── (dashboard)/      # Role-based secure workspaces (admin, distributor, farmer)
+│   ├── login/            # Sign in page
+│   ├── register/         # Sign up page
+│   ├── trace/            # Public QR-code tracking lookup page
+│   ├── globals.css       # Core styling & custom CSS variables design system
+│   └── layout.tsx        # Global HTML root layout
+├── components/           # Reusable UI components (charts, selects, landing pages)
+├── lib/                  # Utilities (API fetching wrappers, Auth helpers, local storage)
+└── public/               # Static assets (logos, illustrations)
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+---
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Role-Based Dashboards
 
-## Learn More
+1. **Farmer Workspace (`/farmer`):**
+   - Harvest Batch Registration.
+   - Smart Partner Matching (shows matching distributors based on location).
+   - Price Prediction Chart & Community Price reporting.
+   - Weekly PDF reports summarizing prices and crops.
+   - Real-time AI chat advisor.
+2. **Distributor Workspace (`/distributor`):**
+   - Incoming shipping requests dashboard.
+   - Checkpoint logger with real-time GPS coordinate detection and storage temperature.
+   - Checkpoint Photo Upload & Visual AI analysis feedback loop.
+   - Interactive Leaflet tracking maps.
+3. **Admin Workspace (`/admin`):**
+   - User Verification (approving farmer/distributor account credentials).
+   - System Anomaly Alerts logs.
+   - Real-time LLM agent logs monitor.
+   - Community price outliers validation.
 
-To learn more about Next.js, take a look at the following resources:
+---
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Local Installation (Without Docker)
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+Ensure you have **Node.js v20+** installed:
 
-## Deploy on Vercel
+### 1. Install Dependencies
+```bash
+npm install
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+### 2. Configure Local Environment
+Create a `.env.local` file inside the `frontend` folder:
+```text
+NEXT_PUBLIC_API_URL=http://localhost:8000
+```
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+### 3. Run Development Server
+```bash
+npm run dev
+```
+Open `http://localhost:3000` in your web browser.
+
+---
+
+## Key Dependencies Used
+- **leaflet** & **react-leaflet** — High-performance interactive maps.
+- **lucide-react** — Modern, clean UI vector icon library.
+- **chart.js** & **react-chartjs-2** — Dynamic charts for price predictions.
