@@ -7,6 +7,7 @@ import { Sprout, Eye, EyeOff, Loader2, AlertCircle } from "lucide-react";
 import { api } from "@/lib/api";
 import { INDONESIA_PROVINCES } from "@/lib/utils";
 import SearchableSelect from "@/components/SearchableSelect";
+import { getToken, getStoredUser, getDashboardPath } from "@/lib/auth";
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -21,6 +22,15 @@ export default function RegisterPage() {
   const [phone, setPhone] = useState("");
   const [role, setRole] = useState("farmer");
   const [region, setRegion] = useState("");
+
+  // Check if user is already logged in
+  useEffect(() => {
+    const token = getToken();
+    const user = getStoredUser();
+    if (token && user) {
+      router.push(getDashboardPath(user.role));
+    }
+  }, [router]);
 
   // Check URL query parameters for auto-selecting role
   useEffect(() => {

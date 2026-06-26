@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Sprout, Eye, EyeOff, Loader2, AlertCircle, CheckCircle2 } from "lucide-react";
 import { api } from "@/lib/api";
-import { setToken, setStoredUser, getDashboardPath } from "@/lib/auth";
+import { getToken, getStoredUser, setToken, setStoredUser, getDashboardPath } from "@/lib/auth";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -21,6 +21,13 @@ export default function LoginPage() {
 
   // Load saved credentials if Remember Me was checked
   useEffect(() => {
+    const token = getToken();
+    const user = getStoredUser();
+    if (token && user) {
+      router.push(getDashboardPath(user.role));
+      return;
+    }
+
     const savedEmail = localStorage.getItem("yawgriva_remember_email");
     const savedPassword = localStorage.getItem("yawgriva_remember_password");
     if (savedEmail && savedPassword) {
@@ -33,7 +40,7 @@ export default function LoginPage() {
     if (params.get("registered") === "1") {
       setJustRegistered(true);
     }
-  }, []);
+  }, [router]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
