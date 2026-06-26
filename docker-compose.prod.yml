@@ -6,8 +6,8 @@ services:
     ports:
       - "3010:3000"
     environment:
-      - NEXT_PUBLIC_API_URL=http://localhost:8000
-      - API_URL=http://backend:8000
+      - NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
+      - API_URL=$API_URL
     depends_on:
       - backend
     restart: always
@@ -87,8 +87,8 @@ services:
       - "9000:9000"
       - "9001:9001"
     environment:
-      MINIO_ROOT_USER: minioadmin
-      MINIO_ROOT_PASSWORD: minioadminpassword
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-minioadminpassword}
     command: server /data --console-address ":9001"
     volumes:
       - minio_data:/data
