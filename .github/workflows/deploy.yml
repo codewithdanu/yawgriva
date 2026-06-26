@@ -54,6 +54,8 @@ jobs:
           tags: |
             ghcr.io/${{ steps.owner.outputs.owner }}/yawgriva-frontend:latest
             ghcr.io/${{ steps.owner.outputs.owner }}/yawgriva-frontend:${{ github.sha }}
+          build-args: |
+            NEXT_PUBLIC_API_URL=${{ secrets.NEXT_PUBLIC_API_URL }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -71,14 +73,14 @@ jobs:
         run: |
           echo "owner=$(echo ${{ github.repository_owner }} | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
 
-      - name: Copy docker-compose.prod.yml to VPS
+      - name: Copy config files to VPS
         uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
           port: ${{ secrets.VPS_PORT || 22 }}
-          source: "docker-compose.prod.yml"
+          source: "docker-compose.prod.yml,nginx.conf"
           target: "~/yawgriva"
 
       - name: Deploy via SSH
@@ -100,11 +102,12 @@ jobs:
 
             # Set environment variables for docker compose
             echo "IMAGE_OWNER=${{ steps.owner.outputs.owner }}" > .env.production
+            echo "NEXT_PUBLIC_API_URL=${{ secrets.NEXT_PUBLIC_API_URL }}" >> .env.production
             
             # Combine it with existing .env if present
             if [ -f .env ]; then
-              # Make sure .env doesn't contain duplicate IMAGE_OWNER
-              grep -v '^IMAGE_OWNER=' .env > .env.tmp || true
+              # Make sure .env doesn't contain duplicate vars
+              grep -v '^IMAGE_OWNER=' .env | grep -v '^NEXT_PUBLIC_API_URL=' > .env.tmp || true
               mv .env.tmp .env
             fi
             cat .env.production >> .env
