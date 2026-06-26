@@ -269,3 +269,30 @@ async def test_list_batches_with_distributor_properties(mock_admin_auth, mock_db
     assert data[0]["match_score"] == 95.5
 
 
+@pytest.mark.anyio
+@patch("core.redis.redis_client", new_callable=AsyncMock)
+async def test_admin_ai_model_setting(mock_redis, mock_admin_auth):
+    # Mock redis get/set
+    mock_redis.get.return_value = "openai"
+    mock_redis.set = AsyncMock()
+
+    # Test GET
+    response = client.get(
+        "/api/v1/admin/ai-model",
+        headers={"Authorization": "Bearer mock-token"}
+    )
+    assert response.status_code == 200
+    assert response.json()["main_model"] == "openai"
+    mock_redis.get.assert_called_once_with("config:main_ai_model")
+
+    # Test POST
+    response = client.post(
+        "/api/v1/admin/ai-model",
+        json={"main_model": "gemini"},
+        headers={"Authorization": "Bearer mock-token"}
+    )
+    assert response.status_code == 200
+    assert response.json()["main_model"] == "gemini"
+    mock_redis.set.assert_called_once_with("config:main_ai_model", "gemini")
+
+

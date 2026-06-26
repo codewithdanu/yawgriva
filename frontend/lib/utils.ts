@@ -115,4 +115,32 @@ export const INDONESIA_PROVINCES = [
   "Sumatera Utara"
 ];
 
+/**
+ * Format alert type from raw database string (e.g. "LOW_FRESHNESS" -> "Tingkat Kesegaran Rendah").
+ */
+export function formatAlertType(type: string): string {
+  if (!type) return "";
+  const mapping: Record<string, string> = {
+    "low_freshness": "Tingkat Kesegaran Rendah",
+    "low_freshness_alert": "Tingkat Kesegaran Rendah",
+    "suhu_tinggi": "Suhu Tinggi",
+    "panen_tertunda": "Panen Tertunda",
+    "keterlambatan_transit": "Keterlambatan Transit",
+    "temperature_spike": "Lonjakan Suhu",
+    "rute_menyimpang": "Rute Menyimpang"
+  };
+
+  const normalized = type.toLowerCase().trim();
+  if (mapping[normalized]) {
+    return mapping[normalized];
+  }
+
+  // Fallback: Replace underscores/hyphens with spaces and capitalize each word
+  return normalized
+    .replace(/[_-]+/g, " ")
+    .split(" ")
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
+}
+
 

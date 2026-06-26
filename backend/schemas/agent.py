@@ -86,3 +86,11 @@ class AlertResponse(BaseModel):
     farmer_name: Optional[str] = None
 
     model_config = {"from_attributes": True}
+
+
+class AIModelSettingsRequest(BaseModel):
+    main_model: str = Field(..., description="gemini | openai")
+
+
+class AIModelSettingsResponse(BaseModel):
+    main_model: str

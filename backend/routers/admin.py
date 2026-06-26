@@ -17,7 +17,7 @@ from models.batch import ProductBatch
 from models.alert import AnomalyAlert
 from models.community_price import CommunityPriceReport
 from schemas.auth import UserResponse
-from schemas.agent import AlertResponse
+from schemas.agent import AlertResponse, AIModelSettingsRequest, AIModelSettingsResponse
 from routers.community_prices import CommunityPriceReportResponse
 
 router = APIRouter(prefix="/admin", tags=["admin"])
@@ -184,3 +184,42 @@ async def reject_outlier_report(
     report.status = "rejected"
     await db.commit()
     return report
+
+
+@router.get("/ai-model", response_model=AIModelSettingsResponse)
+async def get_ai_model_setting(
+    current_user: User = Depends(require_role("admin")),
+):
+    """Get the current main AI model setting."""
+    from core.redis import redis_client
+    try:
+        model = await redis_client.get("config:main_ai_model")
+        if model in ("gemini", "openai"):
+            return AIModelSettingsResponse(main_model=model)
+    except Exception:
+        pass
+    return AIModelSettingsResponse(main_model="gemini")
+
+
+@router.post("/ai-model", response_model=AIModelSettingsResponse)
+async def update_ai_model_setting(
+    request_body: AIModelSettingsRequest,
+    current_user: User = Depends(require_role("admin")),
+):
+    """Update the main AI model setting (gemini or openai)."""
+    if request_body.main_model not in ("gemini", "openai"):
+        raise HTTPException(
+            status_code=400,
+            detail="Main model must be either 'gemini' or 'openai'"
+        )
+    
+    from core.redis import redis_client
+    try:
+        await redis_client.set("config:main_ai_model", request_body.main_model)
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Gagal menyimpan ke Redis: {str(e)}"
+        )
+        
+    return AIModelSettingsResponse(main_model=request_body.main_model)

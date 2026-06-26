@@ -18,6 +18,18 @@ from core.database import async_session
 from models.alert import AgentLog
 
 
+async def get_main_ai_model() -> str:
+    """Helper to fetch the configured main AI model from Redis."""
+    from core.redis import redis_client
+    try:
+        model = await redis_client.get("config:main_ai_model")
+        if model in ("gemini", "openai"):
+            return model
+    except Exception as e:
+        print(f"Failed to read main AI model from Redis: {e}")
+    return "gemini"
+
+
 class BaseAgent:
     def __init__(self, agent_type: str, system_prompt: str, tools: List[Any] = None):
         self.agent_type = agent_type
@@ -54,6 +66,8 @@ class BaseAgent:
         
         effective_prompt = self.system_prompt + context_suffix
         
+        main_model = await get_main_ai_model()
+        
         gemini_models = [
             "gemini-2.5-flash",
             "gemini-3.5-flash",
@@ -64,6 +78,16 @@ class BaseAgent:
             "gemini-2.0-flash",
             "gemini-2.0-flash-lite"
         ]
+        
+        models_to_try = []
+        if main_model == "openai":
+            models_to_try.append(("openai", "gpt-4o-mini"))
+            for m in gemini_models:
+                models_to_try.append(("gemini", m))
+        else:
+            for m in gemini_models:
+                models_to_try.append(("gemini", m))
+            models_to_try.append(("openai", "gpt-4o-mini"))
         
         messages = [
             SystemMessage(content=effective_prompt),
@@ -80,39 +104,31 @@ class BaseAgent:
             response = None
             
             # Find a working model for this invocation
-            while current_model_idx < len(gemini_models):
-                g_model = gemini_models[current_model_idx]
+            while current_model_idx < len(models_to_try):
+                provider, model_name = models_to_try[current_model_idx]
                 try:
-                    llm = self._get_gemini_llm(g_model)
+                    if provider == "gemini":
+                        llm = self._get_gemini_llm(model_name)
+                    else:
+                        llm = self._get_fallback_llm()
+                        
                     if self.tools:
                         model = llm.bind_tools(self.tools)
                     else:
                         model = llm
                     
                     response = await model.ainvoke(messages)
-                    model_used = g_model
+                    model_used = model_name
                     break
                 except Exception as e:
-                    print(f"Gemini {g_model} failed during invocation (iteration {iteration}): {e}. Trying next model...")
+                    print(f"Model {provider}/{model_name} failed during invocation (iteration {iteration}): {e}. Trying next model...")
                     current_model_idx += 1
             
             if response is None:
-                # Fallback to OpenAI
-                print("All Gemini models failed. Falling back to GPT-4o-mini.")
-                try:
-                    llm_fallback = self._get_fallback_llm()
-                    if self.tools:
-                        model = llm_fallback.bind_tools(self.tools)
-                    else:
-                        model = llm_fallback
-                    
-                    response = await model.ainvoke(messages)
-                    model_used = "gpt-4o-mini"
-                except Exception as openai_err:
-                    print(f"OpenAI fallback error: {openai_err}")
-                    reply = "Maaf, sistem AI sedang mengalami gangguan koneksi. Silakan coba beberapa saat lagi."
-                    model_used = "failed"
-                    break
+                print("All available models failed.")
+                reply = "Maaf, sistem AI sedang mengalami gangguan koneksi. Silakan coba beberapa saat lagi."
+                model_used = "failed"
+                break
             
             messages.append(response)
             if hasattr(response, "response_metadata") and "token_usage" in response.response_metadata:
@@ -177,6 +193,8 @@ class BaseAgent:
         
         effective_prompt = self.system_prompt + context_suffix
         
+        main_model = await get_main_ai_model()
+        
         gemini_models = [
             "gemini-2.5-flash",
             "gemini-3.5-flash",
@@ -188,6 +206,16 @@ class BaseAgent:
             "gemini-2.0-flash-lite"
         ]
         
+        models_to_try = []
+        if main_model == "openai":
+            models_to_try.append(("openai", "gpt-4o-mini"))
+            for m in gemini_models:
+                models_to_try.append(("gemini", m))
+        else:
+            for m in gemini_models:
+                models_to_try.append(("gemini", m))
+            models_to_try.append(("openai", "gpt-4o-mini"))
+
         messages = [
             SystemMessage(content=effective_prompt),
             HumanMessage(content=user_message)
@@ -203,42 +231,34 @@ class BaseAgent:
             response = None
             
             # Find a working model for this invocation
-            while current_model_idx < len(gemini_models):
-                g_model = gemini_models[current_model_idx]
+            while current_model_idx < len(models_to_try):
+                provider, model_name = models_to_try[current_model_idx]
                 try:
-                    llm = self._get_gemini_llm(g_model)
+                    if provider == "gemini":
+                        llm = self._get_gemini_llm(model_name)
+                    else:
+                        llm = self._get_fallback_llm()
+                        
                     if self.tools:
                         model = llm.bind_tools(self.tools)
                     else:
                         model = llm
                     
                     response = await model.ainvoke(messages)
-                    model_used = g_model
+                    model_used = model_name
                     break
                 except Exception as e:
-                    print(f"Gemini {g_model} streaming failed during invocation (iteration {iteration}): {e}. Trying next model...")
-                    next_model_name = gemini_models[current_model_idx+1] if current_model_idx+1 < len(gemini_models) else "OpenAI"
-                    yield {"status": f"Mengalihkan ke model Gemini alternatif ({next_model_name})..."}
+                    print(f"Model {provider}/{model_name} streaming failed during invocation (iteration {iteration}): {e}. Trying next model...")
+                    next_model_name = models_to_try[current_model_idx+1][1] if current_model_idx+1 < len(models_to_try) else "none"
+                    yield {"status": f"Mengalihkan ke model alternatif ({next_model_name})..."}
                     current_model_idx += 1
             
             if response is None:
-                # Fallback to OpenAI
-                print("All Gemini models failed. Falling back to GPT-4o-mini.")
-                yield {"status": "Mengalihkan ke model cadangan OpenAI (gpt-4o-mini)..."}
-                try:
-                    llm_fallback = self._get_fallback_llm()
-                    if self.tools:
-                        model = llm_fallback.bind_tools(self.tools)
-                    else:
-                        model = llm_fallback
-                    
-                    response = await model.ainvoke(messages)
-                    model_used = "gpt-4o-mini"
-                except Exception as openai_err:
-                    print(f"OpenAI fallback streaming error: {openai_err}")
-                    reply = "Maaf, sistem AI sedang mengalami gangguan koneksi. Silakan coba beberapa saat lagi."
-                    model_used = "failed"
-                    break
+                print("All available models failed.")
+                yield {"status": "Semua model gagal merespon..."}
+                reply = "Maaf, sistem AI sedang mengalami gangguan koneksi. Silakan coba beberapa saat lagi."
+                model_used = "failed"
+                break
             
             messages.append(response)
             if hasattr(response, "response_metadata") and "token_usage" in response.response_metadata:

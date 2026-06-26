@@ -10,6 +10,7 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_openai import ChatOpenAI
 
 from core.config import settings
+from agents.base import get_main_ai_model
 from agents.price_agent import PriceAgent
 from agents.logistics_agent import LogisticsAgent
 from agents.anomaly_agent import AnomalyAgent
@@ -90,6 +91,8 @@ class Orchestrator:
         """Classify user message into: price, logistics, anomaly, general."""
         prompt = CLASSIFICATION_PROMPT.format(message=message)
         
+        main_model = await get_main_ai_model()
+        
         gemini_models = [
             "gemini-2.5-flash",
             "gemini-3.5-flash",
@@ -100,25 +103,29 @@ class Orchestrator:
             "gemini-2.0-flash",
             "gemini-2.0-flash-lite"
         ]
-        category = "general"
         
-        for g_model in gemini_models:
+        models_to_try = []
+        if main_model == "openai":
+            models_to_try.append(("openai", "gpt-4o-mini"))
+            for m in gemini_models:
+                models_to_try.append(("gemini", m))
+        else:
+            for m in gemini_models:
+                models_to_try.append(("gemini", m))
+            models_to_try.append(("openai", "gpt-4o-mini"))
+
+        category = "general"
+        for provider, model_name in models_to_try:
             try:
-                llm = self._get_gemini_llm(g_model, temperature=0.0)
+                if provider == "gemini":
+                    llm = self._get_gemini_llm(model_name, temperature=0.0)
+                else:
+                    llm = self._get_fallback_llm()
                 resp = await llm.ainvoke([HumanMessage(content=prompt)])
                 category = resp.content.strip().lower()
                 break  # Success!
             except Exception as e:
-                print(f"Orchestrator classification failed on Gemini {g_model}: {e}. Trying next Gemini fallback...")
-        else:
-            print("All Gemini models failed classification. Trying OpenAI fallback.")
-            try:
-                llm_fallback = self._get_fallback_llm()
-                resp = await llm_fallback.ainvoke([HumanMessage(content=prompt)])
-                category = resp.content.strip().lower()
-            except Exception as inner_e:
-                print(f"Orchestrator fallback classification failed: {inner_e}")
-                category = "general"
+                print(f"Orchestrator classification failed on {provider}/{model_name}: {e}. Trying next model...")
                 
         # Guard against weird LLM responses
         valid_categories = {"price", "logistics", "anomaly", "general"}
@@ -163,6 +170,8 @@ class Orchestrator:
 
     async def _generate_general_response(self, message: str, context_suffix: str = "") -> str:
         """Generate response for general conversational messages."""
+        main_model = await get_main_ai_model()
+        
         gemini_models = [
             "gemini-2.5-flash",
             "gemini-3.5-flash",
@@ -174,11 +183,28 @@ class Orchestrator:
             "gemini-2.0-flash-lite"
         ]
         
+        models_to_try = []
+        if main_model == "openai":
+            models_to_try.append(("openai", "gpt-4o-mini"))
+            for m in gemini_models:
+                models_to_try.append(("gemini", m))
+        else:
+            for m in gemini_models:
+                models_to_try.append(("gemini", m))
+            models_to_try.append(("openai", "gpt-4o-mini"))
+        
         system_content = GENERAL_SYSTEM_PROMPT + context_suffix
         
-        for g_model in gemini_models:
+        for provider, model_name in models_to_try:
             try:
-                llm = self._get_gemini_llm(g_model, temperature=0.7)
+                if provider == "gemini":
+                    llm = self._get_gemini_llm(model_name, temperature=0.7)
+                else:
+                    llm = ChatOpenAI(
+                        model="gpt-4o-mini",
+                        api_key=settings.OPENAI_API_KEY,
+                        temperature=0.7
+                    )
                 messages = [
                     SystemMessage(content=system_content),
                     HumanMessage(content=message)
@@ -186,24 +212,11 @@ class Orchestrator:
                 resp = await llm.ainvoke(messages)
                 return resp.content
             except Exception as e:
-                print(f"Orchestrator general response failed on Gemini {g_model}: {e}. Trying next Gemini fallback...")
+                print(f"Orchestrator general response failed on {provider}/{model_name}: {e}. Trying next fallback...")
         else:
-            try:
-                llm_fallback = ChatOpenAI(
-                    model="gpt-4o-mini",
-                    api_key=settings.OPENAI_API_KEY,
-                    temperature=0.7
-                )
-                messages = [
-                    SystemMessage(content=system_content),
-                    HumanMessage(content=message)
-                ]
-                resp = await llm_fallback.ainvoke(messages)
-                return resp.content
-            except Exception:
-                return (
-                    "Halo! Saya Yawgriva AI Assistant. Saya bisa membantu Anda memantau "
-                    "harga pasar komoditas, merekomendasikan rute logistik tercepat untuk menjaga "
-                    "kesegaran produk, serta mendeteksi anomali suhu/pengiriman pada batch produk Anda. "
-                    "Silakan ajukan pertanyaan terkait hal tersebut!"
-                )
+            return (
+                "Halo! Saya Yawgriva AI Assistant. Saya bisa membantu Anda memantau "
+                "harga pasar komoditas, merekomendasikan rute logistik tercepat untuk menjaga "
+                "kesegaran produk, serta mendeteksi anomali suhu/pengiriman pada batch produk Anda. "
+                "Silakan ajukan pertanyaan terkait hal tersebut!"
+            )

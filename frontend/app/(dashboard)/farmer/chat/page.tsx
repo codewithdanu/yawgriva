@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/purity */
 "use client";
 
 import { useState, useRef, useEffect } from "react";
@@ -25,6 +26,7 @@ interface Message {
   content: string;
   timestamp: Date;
   statusSteps?: string[];
+  isComplete?: boolean;
 }
 
 const SUGGESTIONS = [
@@ -37,14 +39,6 @@ export default function ChatPage() {
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const abortControllerRef = useRef<AbortController | null>(null);
 
-  useEffect(() => {
-    return () => {
-      if (abortControllerRef.current) {
-        abortControllerRef.current.abort();
-      }
-    };
-  }, []);
-
   // Read stored messages synchronously on mount to avoid React state hydration race conditions
   const [messages, setMessages] = useState<Message[]>(() => {
     if (typeof window === "undefined") return [];
@@ -54,7 +48,14 @@ export default function ChatPage() {
       if (cached) {
         try {
           const parsed = JSON.parse(cached);
-          const mapped = parsed.map((m: any) => ({
+          const mapped = parsed.map((m: {
+            id: string;
+            role: "user" | "assistant";
+            content: string;
+            timestamp: string;
+            statusSteps?: string[];
+            isComplete?: boolean;
+          }) => ({
             ...m,
             timestamp: new Date(m.timestamp)
           }));
@@ -62,7 +63,7 @@ export default function ChatPage() {
           // Clean up incomplete assistant messages at the end of the history
           if (mapped.length > 0) {
             const lastMsg = mapped[mapped.length - 1];
-            if (lastMsg.role === "assistant" && !lastMsg.content) {
+            if (lastMsg.role === "assistant" && (!lastMsg.content || lastMsg.isComplete === false)) {
               mapped.pop();
             }
           }
@@ -77,22 +78,110 @@ export default function ChatPage() {
 
   const [input, setInput] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
-  const [userContext, setUserContext] = useState<ChatUserContext | undefined>(undefined);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
-
-  // Load user profile on mount to build context for AI
-  useEffect(() => {
-    const token = getToken();
+  const [userContext, setUserContext] = useState<ChatUserContext | undefined>(() => {
+    if (typeof window === "undefined") return undefined;
     const stored = getStoredUser();
-    if (!token || !stored) return;
-
-    // Build base context from stored user
-    const baseCtx: ChatUserContext = {
+    if (!stored) return undefined;
+    return {
       name: stored.name,
       role: stored.role,
       region: stored.region,
     };
-    setUserContext(baseCtx);
+  });
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const hasResumedRef = useRef(false);
+
+  function startAssistantStream(messageText: string, currentContext?: ChatUserContext) {
+    setIsStreaming(true);
+
+    const assistantId = (Date.now() + 1).toString();
+    setMessages((prev) => [
+      ...prev,
+      { id: assistantId, role: "assistant", content: "", timestamp: new Date(), statusSteps: [], isComplete: false },
+    ]);
+
+    const token = getToken();
+    if (!token) return;
+
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
+    streamChat(
+      token,
+      messageText,
+      (chunk) => {
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === assistantId ? { ...m, content: m.content + chunk } : m
+          )
+        );
+      },
+      () => {
+        setIsStreaming(false);
+        abortControllerRef.current = null;
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === assistantId ? { ...m, isComplete: true } : m
+          )
+        );
+      },
+      (err: Error) => {
+        if (err.name === "AbortError") return;
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === assistantId
+              ? { ...m, content: m.content || "Maaf, terjadi kesalahan. Coba lagi.", isComplete: true }
+              : m
+          )
+        );
+        setIsStreaming(false);
+        abortControllerRef.current = null;
+      },
+      currentContext || userContext,
+      controller.signal,
+      (statusText) => {
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === assistantId
+              ? { ...m, statusSteps: [...(m.statusSteps || []), statusText] }
+              : m
+          )
+        );
+      }
+    );
+  }
+
+  function handleSend(text?: string) {
+    const messageText = text || input.trim();
+    if (!messageText || isStreaming) return;
+
+    const userMessage: Message = {
+      id: Date.now().toString(),
+      role: "user",
+      content: messageText,
+      timestamp: new Date(),
+    };
+
+    setMessages((prev) => [...prev, userMessage]);
+    setInput("");
+    startAssistantStream(messageText);
+  }
+
+  useEffect(() => {
+    return () => {
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+    };
+  }, []);
+
+  // Load user profile on mount to build context for AI
+  useEffect(() => {
+    const token = getToken();
+    if (!token) return;
 
     // Fetch full profile to get farmer-specific fields
     api.auth.getProfile(token)
@@ -123,6 +212,22 @@ export default function ChatPage() {
     }
   }, [messages]);
 
+  // Resume streaming if the last message is from user (interrupted chat)
+  useEffect(() => {
+    if (userContext && !hasResumedRef.current && !isStreaming) {
+      if (messages.length > 0) {
+        const lastMsg = messages[messages.length - 1];
+        if (lastMsg.role === "user") {
+          hasResumedRef.current = true;
+          setTimeout(() => {
+            startAssistantStream(lastMsg.content, userContext);
+          }, 0);
+        }
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userContext, messages, isStreaming]);
+
   // Scroll to bottom when messages update
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -130,76 +235,6 @@ export default function ChatPage() {
 
   function handleClearChat() {
     setShowConfirmModal(true);
-  }
-
-  function handleSend(text?: string) {
-    const messageText = text || input.trim();
-    if (!messageText || isStreaming) return;
-
-    const userMessage: Message = {
-      id: Date.now().toString(),
-      role: "user",
-      content: messageText,
-      timestamp: new Date(),
-    };
-
-    setMessages((prev) => [...prev, userMessage]);
-    setInput("");
-    setIsStreaming(true);
-
-    const assistantId = (Date.now() + 1).toString();
-    setMessages((prev) => [
-      ...prev,
-      { id: assistantId, role: "assistant", content: "", timestamp: new Date(), statusSteps: [] },
-    ]);
-
-    const token = getToken();
-    if (!token) return;
-
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
-    }
-    const controller = new AbortController();
-    abortControllerRef.current = controller;
-
-    streamChat(
-      token,
-      messageText,
-      (chunk) => {
-        setMessages((prev) =>
-          prev.map((m) =>
-            m.id === assistantId ? { ...m, content: m.content + chunk } : m
-          )
-        );
-      },
-      () => {
-        setIsStreaming(false);
-        abortControllerRef.current = null;
-      },
-      (err: any) => {
-        if (err.name === "AbortError") return;
-        setMessages((prev) =>
-          prev.map((m) =>
-            m.id === assistantId
-              ? { ...m, content: m.content || "Maaf, terjadi kesalahan. Coba lagi." }
-              : m
-          )
-        );
-        setIsStreaming(false);
-        abortControllerRef.current = null;
-      },
-      userContext,
-      controller.signal,
-      (statusText) => {
-        setMessages((prev) =>
-          prev.map((m) =>
-            m.id === assistantId
-              ? { ...m, statusSteps: [...(m.statusSteps || []), statusText] }
-              : m
-          )
-        );
-      }
-    );
   }
 
   return (

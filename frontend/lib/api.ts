@@ -178,6 +178,14 @@ export const api = {
       request<CommunityPriceReport>(`/admin/outliers/${id}/validate`, { method: "PATCH", token }),
     rejectOutlier: (token: string, id: string) =>
       request<CommunityPriceReport>(`/admin/outliers/${id}/reject`, { method: "PATCH", token }),
+    getAiModel: (token: string) =>
+      request<{ main_model: string }>("/admin/ai-model", { token }),
+    updateAiModel: (token: string, mainModel: string) =>
+      request<{ main_model: string }>("/admin/ai-model", {
+        method: "POST",
+        body: { main_model: mainModel },
+        token,
+      }),
   },
 
   // Feature 2: Delivery Requests

@@ -23,14 +23,20 @@ import {
   Loader2,
   RefreshCw,
 } from "lucide-react";
-import { formatCommodityName } from "@/lib/utils";
+import { formatCommodityName, formatAlertType } from "@/lib/utils";
 
 export default function AdminDashboard() {
   const router = useRouter();
   const [overview, setOverview] = useState<{ total_users: number; total_batches: number; active_alerts: number } | null>(null);
   const [agentHealth, setAgentHealth] = useState<AgentHealth[]>([]);
   const [alerts, setAlerts] = useState<Alert[]>([]);
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 10;
   const [outliers, setOutliers] = useState<CommunityPriceReport[]>([]);
+  
+  const [mainModel, setMainModel] = useState<string>("gemini");
+  const [savingModel, setSavingModel] = useState(false);
+  const [saveSuccess, setSaveSuccess] = useState(false);
   
   const [loading, setLoading] = useState(true);
   const [actionId, setActionId] = useState<string | null>(null);
@@ -74,17 +80,19 @@ export default function AdminDashboard() {
         return;
       }
 
-      const [overviewData, healthData, alertsData, outliersData] = await Promise.all([
+      const [overviewData, healthData, alertsData, outliersData, modelData] = await Promise.all([
         api.admin.overview(token),
         api.agents.health(token),
         api.admin.alerts(token),
         api.admin.listOutliers(token),
+        api.admin.getAiModel(token),
       ]);
 
       setOverview(overviewData);
       setAgentHealth(healthData);
       setAlerts(alertsData);
       setOutliers(outliersData);
+      setMainModel(modelData.main_model);
     } catch (err: unknown) {
       console.error(err);
       // Determine error type for better user guidance
@@ -169,12 +177,41 @@ export default function AdminDashboard() {
     }
   }
 
+  async function handleSaveModelSettings(selectedModel: string) {
+    setSavingModel(true);
+    setSaveSuccess(false);
+    try {
+      const token = getToken();
+      if (!token) return;
+      await api.admin.updateAiModel(token, selectedModel);
+      setMainModel(selectedModel);
+      setSaveSuccess(true);
+      // Automatically refresh the agent health data to show the updated model
+      const updatedHealth = await api.agents.health(token);
+      setAgentHealth(updatedHealth);
+      setTimeout(() => setSaveSuccess(false), 3000);
+    } catch (err: unknown) {
+      console.error(err);
+      const errMsg = err instanceof Error ? err.message : "Unknown error";
+      alert("Gagal memperbarui model AI utama: " + errMsg);
+    } finally {
+      setSavingModel(false);
+    }
+  }
+
   useEffect(() => {
     const timer = setTimeout(() => {
       loadDashboardData();
     }, 0);
     return () => clearTimeout(timer);
   }, []);
+
+  useEffect(() => {
+    const totalPagesCount = Math.ceil(alerts.length / itemsPerPage);
+    if (currentPage > 1 && currentPage > totalPagesCount) {
+      setCurrentPage(totalPagesCount || 1);
+    }
+  }, [alerts.length, currentPage]);
 
   const getAgentIcon = (type: string) => {
     switch (type.toLowerCase()) {
@@ -277,6 +314,11 @@ export default function AdminDashboard() {
   const totalCallsToday = agentHealth.reduce((acc, curr) => acc + curr.total_calls_today, 0);
   const filteredOutliers = outliers.filter(o => o.status === activeOutlierTab);
 
+  const totalPages = Math.ceil(alerts.length / itemsPerPage);
+  const indexOfLastItem = currentPage * itemsPerPage;
+  const indexOfFirstItem = indexOfLastItem - itemsPerPage;
+  const currentAlerts = alerts.slice(indexOfFirstItem, indexOfLastItem);
+
   return (
     <div className="admin-dashboard">
       {/* Header */}
@@ -347,6 +389,90 @@ export default function AdminDashboard() {
             <p className="stat-value">{totalCallsToday}</p>
             <p className="stat-label">API Calls Today</p>
           </div>
+        </div>
+      </div>
+
+      {/* AI Model Settings */}
+      <div className="card animate-fade-in" style={{ animationDelay: "0.12s" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "var(--space-4)" }}>
+          <div>
+            <h2 style={{ fontSize: "var(--text-lg)", display: "flex", alignItems: "center", gap: "6px" }}>
+              <Cpu size={20} style={{ color: "var(--color-primary)" }} />
+              Konfigurasi Model AI Utama
+            </h2>
+            <p style={{ color: "var(--color-text-muted)", fontSize: "var(--text-xs)", marginTop: "2px" }}>
+              Pilih provider model AI utama yang akan dihubungi terlebih dahulu oleh sistem Orchestrator Agen Yawgriva.
+            </p>
+          </div>
+          {saveSuccess && (
+            <span style={{
+              fontSize: "var(--text-xs)",
+              background: "var(--color-success-bg)",
+              color: "var(--color-success)",
+              padding: "4px 10px",
+              borderRadius: "var(--radius-md)",
+              fontWeight: 600,
+              display: "flex",
+              alignItems: "center",
+              gap: "4px",
+            }}>
+              <CheckCircle2 size={12} /> Pengaturan disimpan!
+            </span>
+          )}
+        </div>
+        
+        <div style={{ display: "flex", gap: "var(--space-4)", marginTop: "var(--space-4)", flexWrap: "wrap" }}>
+          <button
+            onClick={() => handleSaveModelSettings("gemini")}
+            disabled={savingModel || mainModel === "gemini"}
+            style={{
+              flex: 1,
+              minWidth: "200px",
+              padding: "var(--space-4)",
+              background: mainModel === "gemini" ? "var(--color-primary-bg)" : "var(--color-surface)",
+              border: mainModel === "gemini" ? "2px solid var(--color-primary)" : "1px solid var(--color-border)",
+              borderRadius: "var(--radius-lg)",
+              textAlign: "left",
+              cursor: savingModel ? "not-allowed" : "pointer",
+              transition: "all var(--transition-fast)",
+              position: "relative",
+              opacity: savingModel ? 0.7 : 1,
+            }}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "4px" }}>
+              <strong style={{ fontSize: "var(--text-sm)", color: mainModel === "gemini" ? "var(--color-primary)" : "var(--color-text)" }}>Google Gemini</strong>
+              {mainModel === "gemini" && <span style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--color-primary)" }} />}
+            </div>
+            <p style={{ fontSize: "var(--text-xs)", color: "var(--color-text-muted)", margin: 0 }}>
+              Menggunakan keluarga model Gemini 2.5/3.5 Flash sebagai pemroses utama (sangat cepat & efisien biaya).
+            </p>
+          </button>
+
+          <button
+            onClick={() => handleSaveModelSettings("openai")}
+            disabled={savingModel || mainModel === "openai"}
+            style={{
+              flex: 1,
+              minWidth: "200px",
+              padding: "var(--space-4)",
+              background: mainModel === "openai" ? "var(--color-primary-bg)" : "var(--color-surface)",
+              border: mainModel === "openai" ? "2px solid var(--color-primary)" : "1px solid var(--color-border)",
+              borderRadius: "var(--radius-lg)",
+              textAlign: "left",
+              cursor: savingModel ? "not-allowed" : "pointer",
+              transition: "all var(--transition-fast)",
+              position: "relative",
+              opacity: savingModel ? 0.7 : 1,
+            }}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "4px" }}>
+              <strong style={{ fontSize: "var(--text-sm)", color: mainModel === "openai" ? "var(--color-primary)" : "var(--color-text)" }}>OpenAI GPT-4o-mini</strong>
+              {mainModel === "openai" && <span style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--color-primary)" }} />}
+            </div>
+            <p style={{ fontSize: "var(--text-xs)", color: "var(--color-text-muted)", margin: 0 }}>
+              Menggunakan model GPT-4o-mini dari OpenAI sebagai pemroses utama (tingkat akurasi tinggi & andal).
+            </p>
+          </button>
         </div>
       </div>
 
@@ -651,12 +777,12 @@ export default function AdminDashboard() {
         )}
 
         <div className="alert-list">
-          {alerts.length === 0 ? (
+          {currentAlerts.length === 0 ? (
             <div style={{ color: "var(--color-text-muted)", fontSize: "var(--text-sm)", padding: "var(--space-2) 0" }}>
               Tidak ada alert aktif saat ini.
             </div>
           ) : (
-            alerts.map((alert) => {
+            currentAlerts.map((alert) => {
               const severityClass = alert.severity === "high" ? "severity-high" : alert.severity === "medium" ? "severity-medium" : "severity-low";
               const severityBadge = alert.severity === "high" ? "badge-danger" : alert.severity === "medium" ? "badge-warning" : "badge-info";
               return (
@@ -671,7 +797,7 @@ export default function AdminDashboard() {
                     <div className="alert-content">
                       <span className="alert-message" style={{ display: "block", fontSize: "var(--text-sm)", fontWeight: 550 }}>{alert.message}</span>
                       <span className="alert-meta" style={{ fontSize: "var(--text-xs)", color: "var(--color-text-muted)", display: "flex", gap: "8px", flexWrap: "wrap", marginTop: "4px" }}>
-                        <span style={{ fontWeight: 600, color: "var(--color-text)" }}>{alert.alert_type}</span>
+                        <span style={{ fontWeight: 600, color: "var(--color-text)" }}>{formatAlertType(alert.alert_type)}</span>
                         <span>•</span>
                         {alert.commodity_name && (
                           <>
@@ -721,6 +847,57 @@ export default function AdminDashboard() {
             })
           )}
         </div>
+
+        {/* Pagination Controls */}
+        {totalPages > 1 && (
+          <div style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            paddingTop: "var(--space-4)",
+            marginTop: "var(--space-4)",
+            borderTop: "1px solid var(--color-border)",
+            fontSize: "var(--text-sm)"
+          }}>
+            <button
+              onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+              disabled={currentPage === 1}
+              style={{
+                padding: "6px 14px",
+                borderRadius: "var(--radius-md)",
+                border: "1px solid var(--color-border)",
+                background: "var(--color-surface)",
+                color: currentPage === 1 ? "var(--color-text-muted)" : "var(--color-text)",
+                cursor: currentPage === 1 ? "not-allowed" : "pointer",
+                fontWeight: 550,
+                opacity: currentPage === 1 ? 0.5 : 1,
+                transition: "all 0.2s"
+              }}
+            >
+              Sebelumnya
+            </button>
+            <span style={{ color: "var(--color-text-muted)", fontSize: "var(--text-xs)" }}>
+              Halaman <strong>{currentPage}</strong> dari <strong>{totalPages}</strong> ({alerts.length} alert)
+            </span>
+            <button
+              onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+              disabled={currentPage === totalPages}
+              style={{
+                padding: "6px 14px",
+                borderRadius: "var(--radius-md)",
+                border: "1px solid var(--color-border)",
+                background: "var(--color-surface)",
+                color: currentPage === totalPages ? "var(--color-text-muted)" : "var(--color-text)",
+                cursor: currentPage === totalPages ? "not-allowed" : "pointer",
+                fontWeight: 550,
+                opacity: currentPage === totalPages ? 0.5 : 1,
+                transition: "all 0.2s"
+              }}
+            >
+              Selanjutnya
+            </button>
+          </div>
+        )}
       </div>
 
       <style jsx>{`
